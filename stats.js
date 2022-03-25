@@ -47,13 +47,20 @@ export async function main(ns) {
                 }
             }
 
+            var stkPortfolio = 0;
+
             if (stkSymbols && !doc.getElementById("stock-display-1")) { // Don't add stocks if unavailable or the stockmaster HUD is active
-                const stkPortfolio = await getNsDataThroughFile(ns, JSON.stringify(stkSymbols) +
+                stkPortfolio = await getNsDataThroughFile(ns, JSON.stringify(stkSymbols) +
                     `.map(sym => ({ sym, pos: ns.stock.getPosition(sym), ask: ns.stock.getAskPrice(sym), bid: ns.stock.getBidPrice(sym) }))` +
                     `.reduce((total, stk) => total + stk.pos[0] * stk.bid + stk.pos[2] * (stk.pos[3] * 2 - stk.ask) -100000 * (stk.pos[0] + stk.pos[2] > 0 ? 1 : 0), 0)`,
                     '/Temp/stock-portfolio-value.txt');
-                if (stkPortfolio > 0) addHud("Stock", formatMoney(stkPortfolio)); // Also, don't bother showing a section for stock if we aren't holding anything
             }
+
+            // Show the total money we have
+            playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
+            addHud("Money", formatMoney(playerInfo.money + stkPortfolio), "Total money you have");
+            if (stkPortfolio > 0) addHud("Stock", formatMoney(stkPortfolio)); // Also, don't bother showing a section for stock if we aren't holding anything
+            
             // Show total instantaneous script income and EXP (values provided directly by the game)
             addHud("ScrInc", formatMoney(ns.getScriptIncome()[0], 3, 2) + '/sec', "Total 'instantenous' income per second being earned across all scripts running on all servers.");
             addHud("ScrExp", formatNumberShort(ns.getScriptExpGain(), 3, 2) + '/sec', "Total 'instantenous' hack experience per second being earned across all scripts running on all servers.");
@@ -82,7 +89,6 @@ export async function main(ns) {
             }
 
             if (options['show-peoplekilled']) {
-                playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
                 const numPeopleKilled = playerInfo.numPeopleKilled;
                 addHud("Kills", formatNumberShort(numPeopleKilled, 6, 0), "Count of successful Homicides. Note: The most kills you need is 30 for 'Speakers for the Dead'");
             }
