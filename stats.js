@@ -37,7 +37,7 @@ export async function main(ns) {
 
     ns.atExit(() => {
         hook1.innerHTML = hook0.innerHTML = "";
-        customElements.parentElement.removeChild(customElements);
+        topStatsElement.parentElement.removeChild(topStatsElement);
     });
 
     const dictSourceFiles = await getActiveSourceFiles(ns, false); // Find out what source files the user has unlocked
