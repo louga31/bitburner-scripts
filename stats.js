@@ -14,8 +14,28 @@ export function autocomplete(data, args) {
 export async function main(ns) {
     const options = ns.flags(argsSchema);
     const doc = eval('document');
+
     const hook0 = doc.getElementById('overview-extra-hook-0');
     const hook1 = doc.getElementById('overview-extra-hook-1');
+    const customElements = hook1.parentElement.parentElement;
+    const topStatsElement = customElements.cloneNode(true);
+    // Remove any nested elements
+    topStatsElement.querySelectorAll("p > p").forEach(el => el.parentElement.removeChild(el));
+    // Change ids since duplicate id's are invalid
+    topStatsElement.querySelectorAll("p").forEach((el, i) => el.id = "stats-money-display-" + i);
+    if (doc.getElementById('stock-display-1') === null) { // If stockmaster have created a hud, display after it
+        customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[2]);
+    } else {
+        customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[3]);
+    }
+    const topStats0 = doc.getElementById('stats-money-display-0');
+    const topStats1 = doc.getElementById('stats-money-display-1');
+
+    ns.atExit(() => {
+        hook1.innerHTML = hook0.innerHTML = "";
+        customElements.parentElement.removeChild(customElements);
+    });
+
     const dictSourceFiles = await getActiveSourceFiles(ns, false); // Find out what source files the user has unlocked
     let playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
     const bitNode = playerInfo.bitNodeN;
@@ -33,6 +53,7 @@ export async function main(ns) {
     while (true) {
         try {
 
+            playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
             // Show what bitNode we're currently playing
             addHud("BitNode", `${bitNode}.${1 + (dictSourceFiles[bitNode] || 0)}`, "Detected as being one more than your current owned SF level.");
 
@@ -56,12 +77,12 @@ export async function main(ns) {
                     '/Temp/stock-portfolio-value.txt');
             }
 
-            // Show the total money we have
-            playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
-            addHud("Money", formatMoney(playerInfo.money + stkPortfolio), "Total money you have");
-            // Don't add stocks if unavailable or the stockmaster HUD is active
-            if (stkPortfolio > 0 && stkSymbols && !doc.getElementById("stock-display-1")) addHud("Stock", formatMoney(stkPortfolio)); // Also, don't bother showing a section for stock if we aren't holding anything
-            
+            if (stkPortfolio > 0 && stkSymbols) {
+                // Show the total money we have
+                addHud("Total", formatMoney(playerInfo.money + stkPortfolio), "Total money you have", true);
+                // Don't add stocks if unavailable or the stockmaster HUD is active
+                if (!doc.getElementById("stock-display-1")) addHud("Stock", formatMoney(stkPortfolio), "", true); // Also, don't bother showing a section for stock if we aren't holding anything
+            }
             // Show total instantaneous script income and EXP (values provided directly by the game)
             addHud("ScrInc", formatMoney(ns.getScriptIncome()[0], 3, 2) + '/sec', "Total 'instantenous' income per second being earned across all scripts running on all servers.");
             addHud("ScrExp", formatNumberShort(ns.getScriptExpGain(), 3, 2) + '/sec', "Total 'instantenous' hack experience per second being earned across all scripts running on all servers.");
@@ -100,11 +121,17 @@ export async function main(ns) {
 
             // Clear the previous loop's custom HUDs
             hook1.innerHTML = hook0.innerHTML = "";
+            topStats0.innerHTML = topStats1.innerHTML = "";
             // Create new HUD elements with info collected above.
             for (const hudRow of hudData) {
-                const [header, formattedValue, toolTip] = hudRow;
-                hook0.appendChild(newline(header, toolTip));
-                hook1.appendChild(newline(formattedValue, toolTip));
+                const [header, formattedValue, toolTip, displayOnTop] = hudRow;
+                if (displayOnTop) {
+                    topStats0.appendChild(newline(header, toolTip));
+                    topStats1.appendChild(newline(formattedValue, toolTip));
+                } else {
+                    hook0.appendChild(newline(header, toolTip));
+                    hook1.appendChild(newline(formattedValue, toolTip));
+                }
             }
             hudData.length = 0; // Clear the hud data for the next iteration
 
