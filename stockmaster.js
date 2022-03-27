@@ -548,7 +548,7 @@ function initializeHud() {
     // Change ids since duplicate id's are invalid
     stockValueTracker.querySelectorAll("p").forEach((el, i) => el.id = "stock-display-" + i);
     // Remove separators
-    stockValueTracker.querySelectorAll("p").forEach((el, i) => el.parentElement.className.replace("jss14", "jss13"));
+    stockValueTracker.querySelectorAll("th").forEach((el, i) => el.className = el.className.replace("jss14", "jss13"));
     // Get out output element
     htmlDisplay = stockValueTracker.querySelector("#stock-display-1");
     // Display label and default value

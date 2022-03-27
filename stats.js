@@ -24,7 +24,7 @@ export async function main(ns) {
     // Change ids since duplicate id's are invalid
     topStatsElement.querySelectorAll("p").forEach((el, i) => el.id = "stats-top-display-" + i);
     // Remove separators
-    topStatsElement.querySelectorAll("p").forEach((el, i) => el.parentElement.className.replace("jss14", "jss13"));
+    topStatsElement.querySelectorAll("th").forEach((el, i) => el.className = el.className.replace("jss14", "jss13"));
     if (doc.getElementById('stock-display-1') === null) { // If stockmaster have created a hud, display after it
         customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[2]);
     } else {
