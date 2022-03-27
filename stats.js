@@ -26,6 +26,10 @@ export async function main(ns) {
     if (doc.getElementById('stock-display-1') === null) { // If stockmaster have created a hud, display after it
         customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[2]);
     } else {
+        let stock0 = doc.getElementById('stock-display-0');
+        let stock1 = doc.getElementById('stock-display-1');
+        stock0.parentElement.className = stock0.parentElement.className.replace("jss14", "jss13");
+        stock1.parentElement.className = stock1.parentElement.className.replace("jss14", "jss13");
         customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[3]);
     }
     const topStats0 = doc.getElementById('stats-money-display-0');
