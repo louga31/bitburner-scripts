@@ -22,18 +22,16 @@ export async function main(ns) {
     // Remove any nested elements
     topStatsElement.querySelectorAll("p > p").forEach(el => el.parentElement.removeChild(el));
     // Change ids since duplicate id's are invalid
-    topStatsElement.querySelectorAll("p").forEach((el, i) => el.id = "stats-money-display-" + i);
+    topStatsElement.querySelectorAll("p").forEach((el, i) => el.id = "stats-top-display-" + i);
+    // Remove separators
+    topStatsElement.querySelectorAll("th").forEach((el, i) => el.className.replace("jss14", "jss13"));
     if (doc.getElementById('stock-display-1') === null) { // If stockmaster have created a hud, display after it
         customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[2]);
     } else {
-        let stock0 = doc.getElementById('stock-display-0');
-        let stock1 = doc.getElementById('stock-display-1');
-        stock0.parentElement.className = stock0.parentElement.className.replace("jss14", "jss13");
-        stock1.parentElement.className = stock1.parentElement.className.replace("jss14", "jss13");
         customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[3]);
     }
-    const topStats0 = doc.getElementById('stats-money-display-0');
-    const topStats1 = doc.getElementById('stats-money-display-1');
+    const topStats0 = doc.getElementById('stats-top-display-0');
+    const topStats1 = doc.getElementById('stats-top-display-1');
 
     ns.atExit(() => {
         hook1.innerHTML = hook0.innerHTML = "";
@@ -56,13 +54,6 @@ export async function main(ns) {
     // Main stats update loop
     while (true) {
         try {
-            if (doc.getElementById('stock-display-0')) {
-                let stock0 = doc.getElementById('stock-display-0');
-                let stock1 = doc.getElementById('stock-display-1');
-                stock0.parentElement.className = stock0.parentElement.className.replace("jss14", "jss13");
-                stock1.parentElement.className = stock1.parentElement.className.replace("jss14", "jss13");
-            }
-
             playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
             // Show what bitNode we're currently playing
             addHud("BitNode", `${bitNode}.${1 + (dictSourceFiles[bitNode] || 0)}`, "Detected as being one more than your current owned SF level.");
@@ -88,10 +79,10 @@ export async function main(ns) {
             }
 
             if (stkPortfolio > 0 && stkSymbols) {
-                // Show the total money we have
-                addHud("Total", formatMoney(playerInfo.money + stkPortfolio), "Total money you have", true);
                 // Don't add stocks if unavailable or the stockmaster HUD is active
                 if (!doc.getElementById("stock-display-1")) addHud("Stock", formatMoney(stkPortfolio), "", true); // Also, don't bother showing a section for stock if we aren't holding anything
+                // Show the total money we have
+                addHud("Total", formatMoney(playerInfo.money + stkPortfolio), "Total money you have", true);
             }
             // Show total instantaneous script income and EXP (values provided directly by the game)
             addHud("ScrInc", formatMoney(ns.getScriptIncome()[0], 3, 2) + '/sec', "Total 'instantenous' income per second being earned across all scripts running on all servers.");
