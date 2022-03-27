@@ -56,6 +56,12 @@ export async function main(ns) {
     // Main stats update loop
     while (true) {
         try {
+            if (doc.getElementById('stock-display-0')) {
+                let stock0 = doc.getElementById('stock-display-0');
+                let stock1 = doc.getElementById('stock-display-1');
+                stock0.parentElement.className = stock0.parentElement.className.replace("jss14", "jss13");
+                stock1.parentElement.className = stock1.parentElement.className.replace("jss14", "jss13");
+            }
 
             playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
             // Show what bitNode we're currently playing
