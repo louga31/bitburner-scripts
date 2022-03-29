@@ -1,17 +1,26 @@
+import { getFilePath, waitForProcessToComplete } from './helpers.js'
+
 let doc = eval("document");
 /** @param {NS} ns 
  *  Super recommend you kill all other scripts before starting this up. **/
 export async function main(ns) {
 	// Step 1: Route to the blackjack screen. (I opted to pay the 4 GB RAM to have this be instant and fool-proof as possible)
-	if (ns.getPlayer().city != "Aevum") ns.travelToCity("Aevum");
+	if (ns.getPlayer().city != "Aevum") {
+		if (!ns.travelToCity("Aevum"))
+			return ns.tprint("ERROR: Sorry, you need at least 200k to travel to the casino.");
+	}
 	ns.goToLocation("Iker Molina Casino");
 	const btnBlackjack = find("//button[contains(text(), 'blackjack')]");
 	await click(btnBlackjack);
-	// Get some buttons we will need
+	// Step 2: Get some buttons we will need
 	const inputWager = find("//input[@value = 1000000]");
 	const btnStartGame = find("//button[text() = 'Start']");
 	const btnSaveGame = find("//button[@aria-label = 'save game']");
-	await click(btnSaveGame); // Save the fact that this script is now running, so that future reloads start this script back up immediately.
+	// Step 3: Save the fact that this script is now running, so that future reloads start this script back up immediately.
+	if (ns.ps("home").some(p => p.filename.includes("/Temp/"))) // Do a little clean-up to speed up save/load.
+		await waitForProcessToComplete(ns, ns.run(getFilePath('cleanup.js')));
+	await click(btnSaveGame);
+	await ns.sleep(10); // Give the game a little time to complete the save
 	while (true) {
 		const bet = Math.min(1E8, ns.getPlayer().money * 0.9 /* Avoid timing issues with other scripts spending money */);
 		await setText(inputWager, `${bet}`);
@@ -19,7 +28,7 @@ export async function main(ns) {
 		const btnHit = find("//button[text() = 'Hit']");
 		const btnStay = find("//button[text() = 'Stay']");
 		let won;
-		do { // Play the game
+		do { // Step 3: Play the game
 			won = find("//p[contains(text(), 'lost')]") ? false : // Detect whether we lost or won. Annoyingly, when we win with blackjack, "Won" is Title-Case.
 				find("//p[contains(text(), 'won')]") || find("//p[contains(text(), 'Won')]") ? true : null;
 			if (won === null) {
@@ -30,7 +39,7 @@ export async function main(ns) {
 				const highCount = Number(allCounts[allCounts.length - 1].innerText);
 				ns.print(`INFO: Count is ${highCount}, we will ${highCount < 17 ? 'Hit' : 'Stay'}`);
 				await click(highCount < 17 ? btnHit : btnStay);
-				await ns.sleep(1);
+				await ns.sleep(1); // Yeild for an instant so the UI can update and process events
 			}
 		} while (won === null);
 		if (won === null) continue; // Only possible if we tied and broke out early. Start a new hand.
@@ -39,8 +48,8 @@ export async function main(ns) {
 			location.reload(); // Force refresh the page without saving           
 			return await ns.sleep(10000); // Keep the script alive to be safe. Presumably the page reloads before this completes.
 		}
-		await click(btnSaveGame);// Save if we won
-		await ns.sleep(1);
+		await click(btnSaveGame); // Save if we won
+		await ns.sleep(10); // Give the game a little time to complete the save
 	}
 }
 // Some DOM helpers (partial credit to ShamesBond)
