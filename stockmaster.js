@@ -31,6 +31,7 @@ const catchUpTickTime = 4000;
 let lastTick = 0;
 let sleepInterval = 1000;
 
+const options = {};
 
 const argsSchema = [
     ['l', false], // Stop any other running stockmaster.js instances and sell all stocks
@@ -68,7 +69,7 @@ export function autocomplete(data, args) {
 export async function main(ns) {
     ns.disableLog("ALL");
     // Extract various options from the args (globals, purchasing decision factors, pre-4s factors)
-    const options = ns.flags(argsSchema);
+    options = ns.flags(argsSchema);
     mock = options.mock;
     noisy = options.noisy;
     const fracB = options.fracB;
