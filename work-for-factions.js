@@ -17,7 +17,9 @@ const argsSchema = [
     ['fast-crimes-only', false], // Assasination and Heist are so slow, I can see people wanting to disable them just so they can interrupt at will.
     ['invites-only', false], // Just work to get invites, don't work for augmentations / faction rep
     ['prioritize-invites', false], // Prioritize working for as many invites as is practical before starting to grind for faction reputation
+    ['get-invited-to-every-faction', false], // You want to be in every faction? You got it!
     ['karma-threshold-for-gang-invites', -40000], // Prioritize working for gang invites once we have this much negative Karma
+    ['no-bladeburner-check', false], // By default, will avoid working if bladeburner is active and "The Blade's Simulacrum" isn't installed
 ];
 
 const companySpecificConfigs = [
@@ -79,6 +81,7 @@ let crimeFocus = false; // Useful in crime-focused BNs when you want to focus on
 let fastCrimesOnly = false; // Can be set via command line argument
 let prioritizeInvites = false;
 let hasFocusPenaly = true;
+let hasSimulacrum = false;
 let shouldFocusAtWork = false; // Whether we should focus on work or let it be backgrounded (based on whether "Neuroreceptor Management Implant" is owned, or "--no-focus" is specified)
 let repToDonate = 150; // Updated after looking at bitnode mults
 let lastActionRestart = 0;
@@ -155,6 +158,7 @@ export async function main(ns) {
             const installedAugmentations = await getNsDataThroughFile(ns, `ns.getOwnedAugmentations()`, '/Temp/player-augs-installed.txt');
             hasFocusPenaly = !installedAugmentations.includes("Neuroreceptor Management Implant"); // Check if we have an augmentation that lets us not have to focus at work (always nicer if we can background it)
             shouldFocusAtWork = !noFocus && hasFocusPenaly; // Focus at work for the best rate of rep gain, unless focus activities are disabled via command line
+            hasSimulacrum = installedAugmentations.includes("The Blade's Simulacrum");
 
             mostExpensiveAugByFaction = Object.fromEntries(allKnownFactions.map(f => [f, dictFactionAugs[f]
                 .filter(aug => !ownedAugmentations.includes(aug))
@@ -167,13 +171,20 @@ export async function main(ns) {
                 .reduce((max, aug) => Math.max(max, dictAugRepReqs[aug]), -1)]));
             //ns.print("Most expensive desired aug by faction: " + JSON.stringify(mostExpensiveDesiredAugByFaction));
 
-            completedFactions = Object.keys(mostExpensiveAugByFaction).filter(fac => mostExpensiveAugByFaction[fac] == -1);
-            softCompletedFactions = Object.keys(mostExpensiveDesiredAugByFaction).filter(fac => mostExpensiveDesiredAugByFaction[fac] == -1 && !completedFactions.includes(fac));
-            skipFactions = skipFactionsConfig.concat(cannotWorkForFactions).concat(completedFactions).filter(fac => !firstFactions.includes(fac));
-            if (completedFactions.length > 0)
-                ns.print(`${completedFactions.length} factions are completed (all augs purchased): ${completedFactions.join(", ")}`);
-            if (softCompletedFactions.length > 0)
-                ns.print(`${softCompletedFactions.length} factions will initially be skipped (all desired augs purchased): ${softCompletedFactions.join(", ")}`);
+            if (options['get-invited-to-every-faction']) {
+                softCompletedFactions = completedFactions = [];
+                // Prioritize joining these 3 city factions, since it is the largest non-precluding group of city factions
+                firstFactions = firstFactions.concat(["Chongqing", "New Tokyo", "Ishima"]);
+                skipFactions = ["Aevum", "Sector-12", "Volhaven"];
+            } else {
+                completedFactions = Object.keys(mostExpensiveAugByFaction).filter(fac => mostExpensiveAugByFaction[fac] == -1);
+                softCompletedFactions = Object.keys(mostExpensiveDesiredAugByFaction).filter(fac => mostExpensiveDesiredAugByFaction[fac] == -1 && !completedFactions.includes(fac));
+                skipFactions = skipFactionsConfig.concat(cannotWorkForFactions).concat(completedFactions).filter(fac => !firstFactions.includes(fac));
+                if (completedFactions.length > 0)
+                    ns.print(`${completedFactions.length} factions are completed (all augs purchased): ${completedFactions.join(", ")}`);
+                if (softCompletedFactions.length > 0)
+                    ns.print(`${softCompletedFactions.length} factions will initially be skipped (all desired augs purchased): ${softCompletedFactions.join(", ")}`);
+            }
 
             numJoinedFactions = playerInfo.factions.length;
             var fulcrummHackReq = await getServerRequiredHackLevel(ns, "fulcrumassets");
@@ -211,7 +222,16 @@ export async function main(ns) {
                             await earnFactionInvite(ns, factionName);
                     }
                     // Whether we're in a gang or will be soon, there's no point in working for any factions that will become gangs, since we will lose all rep with them
-                    skipFactions = skipFactions.concat(allGangFactions.filter(f => !skipFactions.includes(f)));
+                    if (!options['get-invited-to-every-faction'])
+                        skipFactions = skipFactions.concat(allGangFactions.filter(f => !skipFactions.includes(f)));
+                }
+            }
+            // If bladeburner is currently active, but we do not yet have The Blade's Simulacrum decide, whether we pause working.        
+            if (7 in dictSourceFiles && !hasSimulacrum && !options['no-bladeburner-check'] && player.inBladeburner) {
+                if (playerGang) { // Heuristic: If we're in a gang, its rep will give us access to most augs, we can take a break from working
+                    ns.print(`INFO: Gang will give us most augs, so pausing work to allow Bladeburner to operate.`);
+                    await ns.sleep(checkForNewPrioritiesInterval);
+                    continue;
                 }
             }
 
@@ -366,7 +386,7 @@ async function earnFactionInvite(ns, factionName) {
         doCrime = true; // TODO: There could be more efficient ways to gain combat stats than homicide, although at least this serves future crime factions
     }
     if (doCrime && noCrime)
-        return ns.print(`--no-crime (or --no-focus): Doing crime to meet faction requirements is disabled.`);
+        return ns.print(`${reasonPrefix} Doing crime to meet faction requirements is disabled. (--no-crime or --no-focus)`);
     if (doCrime)
         workedForInvite = await crimeForKillsKarmaStats(ns, requiredKillsByFaction[factionName] || 0, requiredKarmaByFaction[factionName] || 0, requiredCombatByFaction[factionName] || 0);
 
@@ -384,11 +404,11 @@ async function earnFactionInvite(ns, factionName) {
 
     // If travelling can help us join a faction - we can do that too
     player = await getPlayerInfo(ns);
-    if (['Tian Di Hui', 'Tetrads', 'The Dark Army'].includes(factionName) && !player.city == 'Chongqing')
+    if (['Tian Di Hui', 'Tetrads', 'The Dark Army'].includes(factionName) && player.city != 'Chongqing')
         workedForInvite = await goToCity(ns, 'Chongqing');
-    else if (['The Syndicate'].includes(factionName) && !player.city == 'Sector-12')
+    else if (['The Syndicate'].includes(factionName) && player.city != 'Sector-12')
         workedForInvite = await goToCity(ns, 'Sector-12');
-    else if (["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"].includes(factionName) && !player.city == factionName)
+    else if (["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"].includes(factionName) && player.city != factionName)
         workedForInvite = await goToCity(ns, factionName);
     // Special case, earn a CEO position to gain an invite to Silhouette
     if ("Silhouette" == factionName) {
@@ -542,7 +562,7 @@ export async function workForSingleFaction(ns, factionName, forceUnlockDonations
     let favorRepRequired = Math.max(0, repToFavour(repToDonate) - repToFavour(startingFavor));
     // When to stop grinding faction rep (usually ~467,000 to get 150 favour) Set this lower if there are no augs requiring that much REP
     let factionRepRequired = forceRep ? forceRep : forceUnlockDonations ? favorRepRequired : Math.min(highestRepAug, favorRepRequired);
-    if (highestRepAug == -1 && !firstFactions.includes(factionName) && !forceRep)
+    if (highestRepAug == -1 && !firstFactions.includes(factionName) && !forceRep && !options['get-invited-to-every-faction'])
         return ns.print(`All "${factionName}" augmentations are owned. Skipping unlocking faction...`);
     // Ensure we get an invite to location-based factions we might want / need
     if (!await earnFactionInvite(ns, factionName))
