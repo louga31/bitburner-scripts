@@ -362,8 +362,10 @@ async function kickstartHackXp(ns) {
                     return log('WARNING: Failed to schedule an XP cycle', false, 'warning');
             }
         }
+    } catch {
+        log('WARNING: Encountered an error while trying to kickstart hack XP (low RAM issues perhaps?)', false, 'warning');
     } finally {
-        if (startedStudying) getNsDataThroughFile(ns, `ns.stopAction()`, '/Temp/stop-action.txt');
+        if (startedStudying) await getNsDataThroughFile(ns, `ns.stopAction()`, '/Temp/stop-action.txt');
     }
 }
 
@@ -717,11 +719,13 @@ async function doTargetingLoop(ns) {
             if (err?.env?.stopFlag) return;
             // Note netscript errors are raised as a simple string (no message property)
             var errorMessage = typeof err === 'string' ? err : err.message || JSON.stringify(err);
-            log(`WARNING: Caught an error in the targeting loop: ${errorMessage}`, true, 'warning');
             // Catch errors that appear to be caused by deleted servers, and remove the server from our lists.
             const expectedDeletedHostPhrase = "Invalid hostname: ";
             let expectedErrorPhraseIndex = errorMessage.indexOf(expectedDeletedHostPhrase);
-            if (expectedErrorPhraseIndex == -1) continue;
+            if (expectedErrorPhraseIndex == -1) {
+                log(`WARNING: Caught an error in the targeting loop: ${errorMessage}`, true, 'warning');
+                continue;
+            }
             let start = expectedErrorPhraseIndex + expectedDeletedHostPhrase.length;
             let lineBreak = errorMessage.indexOf('<br>', start);
             let deletedHostName = errorMessage.substring(start, lineBreak);
