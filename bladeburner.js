@@ -144,8 +144,8 @@ async function mainLoop(ns) {
     const limitedActions = [nextBlackOp].concat(operationNames).concat(contractNames);
     const populationActions = ["Undercover Operation", "Investigation", "Tracking"];
     const reservedActions = ["Raid", "Stealth Retirement Operation"].concat(populationActions
-        // Only reserve these actions if their count is below the configured reserve amount, scaled for how close we are to our final rank
-        .filter(a => getCount(a) <= (options['reserved-action-count'] * (1 - rank / maxRankNeeded))));
+        // Only reserve these actions if their count is below the configured reserve amount, scaled down as we approach our final rank (stop reserving at 99% of max rank)
+        .filter(a => getCount(a) <= (options['reserved-action-count'] * (1 - rank / (0.99 * maxRankNeeded)))));
     if (rank < blackOpsRanks[nextBlackOp]) reservedActions.push(nextBlackOp); // Remove blackop from "available actions" if we have insufficient rank.
     const unreservedActions = limitedActions.filter(o => !reservedActions.includes(o));
     //log(ns, 'Unreserved Action Counts: ' + unreservedActions.map(a => `${a}: ${getCount(a)}`).join(", ")); // Debug log to see what unreserved actions remain
@@ -250,8 +250,12 @@ async function mainLoop(ns) {
         candidateActions = candidateActions.filter(a => getCount(a) > 0);
         // SPECIAL CASE: If we can complete the last bladeburner operation, leave it to the user (they may not be ready to leave the BN).
         if (remainingBlackOpsNames.length == 1 && minChance(nextBlackOp) > options['success-threshold']) {
-            if (!lastBlackOpReady) log(ns, "SUCCESS: Bladeburner is ready to undertake the last BlackOp when you are!", true, 'success')
-            lastBlackOpReady = true;
+            if (!lastBlackOpReady) { // If this is our first time discovering this, alert the user
+                const time = (await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt')).playtimeSinceLastBitnode;
+                log(ns, `SUCCESS: Bladeburner is ready to undertake the last BlackOp! (At ${formatDuration(time)})`, true, 'success');
+                ns.alert("Bladeburner is ready to undertake the last BlackOp (ends the bitnode)");
+                lastBlackOpReady = true;
+            }
             candidateActions = candidateActions.filter(a => a != nextBlackOp);
         }
 
@@ -282,8 +286,8 @@ async function mainLoop(ns) {
                 timesTrained += options['update-interval'] / 30000; // Take into account the training time (30 seconds) vs how often this code is called
                 bestActionName = "Training";
                 reason = `Nothing better to do, times trained (${timesTrained.toFixed(0)}) < --training-limit (${options['training-limit']}), and ` +
-                    `some actions are below success threshold: ` + unreservedActions.filter(a => maxChance(a) < options['success-threshold'])
-                        .map(a => `${a} (${(100 * maxChance(a)).toFixed(1)})`).join(", ");
+                    `actions are below success threshold: ` + unreservedActions.filter(a => maxChance(a) < options['success-threshold'])
+                        .map(a => `${a} (${(100 * maxChance(a)).toFixed(1)}%)`).join(", ");
             } else { // Otherwise, Field Analysis
                 bestActionName = "Field Analysis"; // Gives a little rank, and improves population estimate. Best we can do when there's nothing else.
                 reason = `Nothing better to do`;
@@ -295,14 +299,15 @@ async function mainLoop(ns) {
 
     // Detect our current action (API returns an object like { "type":"Operation", "name":"Investigation" })
     const currentAction = await getBBInfo(ns, `getCurrentAction()`);
-
-    // Normally, we don't switch tasks if our previously assigned task hasn't had time to complete once.
-    // EXCEPTION: Early after a reset, this time is LONG, and in a few seconds it may be faster to just stop and restart it.
-    const currentDuration = await getBBInfo(ns, `getActionTime(ns.args[0], ns.args[1])`, currentAction.type, currentAction.name);
-    if (currentDuration < currentTaskEndTime - Date.now()) {
-        log(ns, `INFO: ${bestActionName == currentAction.name ? 'Restarting' : 'Cancelling'} action ${currentAction.name} because its new duration ` +
-            `is less than the time remaining (${formatDuration(currentDuration)} < ${formatDuration(currentTaskEndTime - Date.now())})`);
-    } else if (Date.now() < currentTaskEndTime || bestActionName == currentAction.name) return;
+    if (currentAction?.name) {
+        // Normally, we don't switch tasks if our previously assigned task hasn't had time to complete once.
+        // EXCEPTION: Early after a reset, this time is LONG, and in a few seconds it may be faster to just stop and restart it.
+        const currentDuration = await getBBInfo(ns, `getActionTime(ns.args[0], ns.args[1])`, currentAction.type, currentAction.name);
+        if (currentDuration < currentTaskEndTime - Date.now()) {
+            log(ns, `INFO: ${bestActionName == currentAction.name ? 'Restarting' : 'Cancelling'} action ${currentAction.name} because its new duration ` +
+                `is less than the time remaining (${formatDuration(currentDuration)} < ${formatDuration(currentTaskEndTime - Date.now())})`);
+        } else if (Date.now() < currentTaskEndTime || bestActionName == currentAction.name) return;
+    } // Otherwise prior action was stopped or ended and no count remain, so we should start a new one regardless of expected currentTaskEndTime
 
     // Change actions if we're not currently doing the desired action
     const bestActionType = nextBlackOp == bestActionName ? "Black Op" : contractNames.includes(bestActionName) ? "Contract" :
@@ -387,7 +392,7 @@ async function beingInBladeburner(ns) {
                 log(ns, `Waiting for physical stats >100 to join bladeburner ` +
                     `(Currently Str: ${player.strength}, Def: ${player.defense}, Dex: ${player.dexterity}, Agi: ${player.agility})`);
             else if (await getNsDataThroughFile(ns, 'ns.bladeburner.joinBladeburnerDivision()', '/Temp/bladeburner-join.txt')) {
-                let message = 'SUCCESS: Joined Bladeburner!';
+                let message = `SUCCESS: Joined Bladeburner (At ${formatDuration(player.playtimeSinceLastBitnode)} into BitNode)`;
                 if (9 in ownedSourceFiles) message += ' Consider running the following command to give it a boost:\n' +
                     'run spend-hacknet-hashes.js --spend-on Exchange_for_Bladeburner_Rank --spend-on Exchange_for_Bladeburner_SP --liquidate';
                 log(ns, message, true, 'success');

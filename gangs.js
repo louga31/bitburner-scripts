@@ -8,7 +8,7 @@ let defaultMaxSpendPerTickPermanentEquipment = 0.2; // If the --augmentation-bud
 const offStatCostPenalty = 50; // Equipment that doesn't contribute to our main stats suffers a percieved cost penalty of this multiple
 
 // Territory-related variables
-const gangsByPower = ["Speakers for the Dead", "The Dark Army", "The Syndicate", "Slum Snakes", /* Hack gangs don't scale as far */ "The Black Hand", /* "NiteSec" Been there, not fun. */]
+const gangsByPower = ["Speakers for the Dead", "The Dark Army", "The Syndicate", "Tetrads", "Slum Snakes", /* Hack gangs don't scale as far */ "The Black Hand", /* "NiteSec" Been there, not fun. */]
 const territoryEngageThreshold = 0.60; // Minimum average win chance (of gangs with territory) before we engage other clans
 let territoryTickDetected = false;
 let territoryTickTime = 20000; // Est. milliseconds until territory *ticks*. Can vary if processing offline time
@@ -93,10 +93,12 @@ async function initialize(ns) {
         await runCommand(ns, `${JSON.stringify(gangsByPower)}.forEach(g => ns.gang.createGang(g))`, '/Temp/gang-createGang.js');
         await ns.sleep(1000); // Wait for our human to join a gang
     }
+    const playerData = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
     log(ns, "Collecting gang information...");
     const myGangInfo = await getNsDataThroughFile(ns, 'ns.gang.getGangInformation()', '/Temp/gang-info.txt');
     myGangFaction = myGangInfo.faction;
-    if (loggedWaiting) log(ns, `SUCCESS: Created gang ${myGangFaction}`, 'success', true);
+    if (loggedWaiting)
+        log(ns, `SUCCESS: Created gang ${myGangFaction} (At ${formatDuration(playerData.playtimeSinceLastBitnode)} into BitNode)`, 'success', true);
     isHackGang = myGangInfo.isHacking;
     importantStats = isHackGang ? ["hack"] : ["str", "def", "dex", "agi"];
     territoryNextTick = lastTerritoryPower = lastOtherGangInfo = null;
@@ -128,7 +130,6 @@ async function initialize(ns) {
         requiredRep = 2.5e6
 
     // Hack: Default aug budget is cut by 1/100 in a few situations (TODO: Add more, like when gang income is severely nerfed)
-    const playerData = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/player-info.txt');
     if (!playerData.has4SDataTixApi || playerData.bitNodeN === 8) {
         defaultMaxSpendPerTickPermanentEquipment /= 100;
         defaultMaxSpendPerTickTransientEquipment /= 100;;
