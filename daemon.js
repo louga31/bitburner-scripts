@@ -154,10 +154,14 @@ const argsSchema = [
     ['no-tail-windows', false], // Set to true to prevent the default behaviour of opening a tail window for certain launched scripts. (Doesn't affect scripts that open their own tail windows)
     ['initial-study-time', 10], // Seconds. Set to 0 to not do any studying at startup. By default, if early in an augmentation, will start with a little study to boost hack XP
     ['initial-hack-xp-time', 10], // Seconds. Set to 0 to not do any hack-xp grinding at startup. By default, if early in an augmentation, will start with a little study to boost hack XP
+    ['disable-script', []], // The names of scripts that you do not want run by our scheduler
 ];
 
 export function autocomplete(data, args) {
     data.flags(argsSchema);
+    const lastFlag = args.length > 1 ? args[args.length - 2] : null;
+    if (lastFlag == "--disable-script")
+        return data.scripts;
     return [];
 }
 
@@ -232,7 +236,7 @@ export async function main(ns) {
     const openTailWindows = !options['no-tail-windows'];
     asynchronousHelpers = [
         { name: "stats.js", shouldRun: () => ns.getServerMaxRam("home") >= 64 /* Don't waste precious RAM */ }, // Adds stats not usually in the HUD
-        { name: "stockmaster.js", args: openTailWindows ? ["--show-market-summary"] : [], tail: openTailWindows, shouldRun: () => playerStats.hasTixApiAccess }, // Start our stockmaster if we have the required stockmarket access
+        { name: "stockmaster.js", args: openTailWindows ? ["--show-market-summary"] : [], tail: openTailWindows }, // Start our stockmaster
         { name: "hacknet-upgrade-manager.js", args: ["-c", "--max-payoff-time", "1h"] }, // Kickstart hash income by buying everything with up to 1h payoff time immediately
         { name: "spend-hacknet-hashes.js", args: [], shouldRun: () => 9 in dictSourceFiles }, // Always have this running to make sure hashes aren't wasted
         { name: "sleeve.js", tail: openTailWindows, shouldRun: () => 10 in dictSourceFiles }, // Script to create manage our sleeves for us
@@ -265,8 +269,8 @@ export async function main(ns) {
             interval: 30000, name: "/Tasks/ram-manager.js", args: () => ['--budget', '0.5', '--reserve', reservedMoney(ns)], // Spend about 50% of un-reserved cash on home RAM upgrades (permanent) when they become available
             shouldRun: () => 4 in dictSourceFiles && shouldImproveHacking() // Only trigger if hack income is important
         },
-        {   // Periodically check for new faction invites and join if deemed useful to be in that faction
-            interval: 31000, name: "faction-manager.js", requiredServer: "home", args: ['--join-only'],
+        {   // Periodically check for new faction invites and join if deemed useful to be in that faction. Also determines how many augs we could afford if we installed right now
+            interval: 31000, name: "faction-manager.js", requiredServer: "home", args: ['--verbose', 'false'],
             // Don't start auto-joining factions until we're holding 1 billion (so coding contracts returning money is probably less critical) or we've joined one already
             shouldRun: () => 4 in dictSourceFiles && (playerStats.factions.length > 0 || ns.getServerMoneyAvailable("home") > 1e9) &&
                 (ns.getServerMaxRam("home") >= 128 / (2 ** dictSourceFiles[4])) // Uses singularity functions, and higher SF4 levels result in lower RAM requirements
@@ -275,7 +279,7 @@ export async function main(ns) {
             interval: 32000, name: "host-manager.js", requiredServer: "home",
             // Funky heuristic warning: I find that new players with fewer SF levels under their belt are obsessed with hack income from servers,
             // but established players end up finding auto-purchased hosts annoying - so now the % of money we spend shrinks as SF levels grow.
-            args: () => ['--reserve-percent', Math.max(0.9, 0.1 * Object.values(dictSourceFiles).reduce((t, v) => t + v, 0)), '--absolute-reserve', reservedMoney(ns), '--utilization-trigger', '0'],
+            args: () => ['--reserve-percent', Math.min(0.9, 0.1 * Object.values(dictSourceFiles).reduce((t, v) => t + v, 0)), '--absolute-reserve', reservedMoney(ns), '--utilization-trigger', '0'],
             shouldRun: () => {
                 if (!shouldImproveHacking()) return false; // Skip if hack income is not important in this BN or at this time               
                 let utilization = getTotalNetworkUtilization(); // Utilization-based heuristics for when we likely could use more RAM for hacking
@@ -417,6 +421,10 @@ const funcResultOrValue = fnOrVal => (fnOrVal instanceof Function ? fnOrVal() : 
 // Returns true if the tool is running (including if it was already running), false if it could not be run.
 /** @param {NS} ns **/
 async function tryRunTool(ns, tool) {
+    if (options['disable-script'].includes(tool.name)) {
+        if (verbose) log(ns, `Tool ${tool.name} was not launched as it was specified with --disable-script`);
+        return false;
+    }
     if (!doesFileExist(tool.name)) {
         log(ns, `ERROR: Tool ${tool.name} was not found on ${daemonHost}`, true, 'error');
         return false;
@@ -434,7 +442,7 @@ async function tryRunTool(ns, tool) {
         if (tool.tail === true && runningOnServer) {
             log(ns, `Tailing Tool: ${tool.name} on server ${runningOnServer}` + (args.length > 0 ? ` with args ${JSON.stringify(args)}` : ''));
             ns.tail(tool.name, runningOnServer, ...args);
-            tool.tail = false; // Avoid popping open additional tail windows in the future
+            //tool.tail = false; // Avoid popping open additional tail windows in the future
         }
         return true;
     } else
@@ -725,9 +733,11 @@ async function doTargetingLoop(ns) {
                 continue;
             }
             let start = expectedErrorPhraseIndex + expectedDeletedHostPhrase.length;
-            let lineBreak = errorMessage.indexOf('<br>', start);
+            let lineBreak = errorMessage.indexOf('<br>', start); // Error strings can appear in different ways
+            if (lineBreak == -1) lineBreak = errorMessage.indexOf(' ', start); // Try to handle them all
+            if (lineBreak == -1) lineBreak = errorMessage.length; // To extract the name of the server deleted
             let deletedHostName = errorMessage.substring(start, lineBreak);
-            log(ns, 'INFO: The server "' + deletedHostName + '" appears to have been deleted. Removing it from our lists', false, 'info');
+            log(ns, 'INFO: The server "' + deletedHostName + '" appears to have been deleted. Removing it from our lists', true, 'info');
             removeServerByName(ns, deletedHostName);
         }
     } while (!runOnce);
@@ -737,7 +747,7 @@ async function doTargetingLoop(ns) {
 let actualWeakenPotency = () => bitnodeMults.ServerWeakenRate * weakenThreadPotency * (1 - weakenThreadPadding);
 
 // Dictionaries of static server information
-let serversDictCommand = (servers, command) => `Object.fromEntries(${JSON.stringify(servers)}.map(server => [server, ${command}]))`;
+let serversDictCommand = command => `Object.fromEntries(ns.args.map(server => [server, ${command}]))`;
 let dictServerRequiredHackinglevels;
 let dictServerNumPortsRequired;
 let dictServerMinSecurityLevels;
@@ -746,15 +756,15 @@ let dictServerProfitInfo;
 
 // Gathers up arrays of server data via external request to have the data written to disk.
 async function getStaticServerData(ns, serverNames) {
-    dictServerRequiredHackinglevels = await getNsDataThroughFile(ns, serversDictCommand(serverNames, 'ns.getServerRequiredHackingLevel(server)'), '/Temp/servers-hack-req.txt');
-    dictServerNumPortsRequired = await getNsDataThroughFile(ns, serversDictCommand(serverNames, 'ns.getServerNumPortsRequired(server)'), '/Temp/servers-num-ports.txt');
+    dictServerRequiredHackinglevels = await getNsDataThroughFile(ns, serversDictCommand('ns.getServerRequiredHackingLevel(server)'), '/Temp/servers-hack-req.txt', serverNames);
+    dictServerNumPortsRequired = await getNsDataThroughFile(ns, serversDictCommand('ns.getServerNumPortsRequired(server)'), '/Temp/servers-num-ports.txt', serverNames);
     await refreshDynamicServerData(ns, serverNames);
 }
 
 /** @param {NS} ns **/
 async function refreshDynamicServerData(ns, serverNames) {
-    dictServerMinSecurityLevels = await getNsDataThroughFile(ns, serversDictCommand(serverNames, 'ns.getServerMinSecurityLevel(server)'), '/Temp/servers-security.txt');
-    dictServerMaxMoney = await getNsDataThroughFile(ns, serversDictCommand(serverNames, 'ns.getServerMaxMoney(server)'), '/Temp/servers-max-money.txt');
+    dictServerMinSecurityLevels = await getNsDataThroughFile(ns, serversDictCommand('ns.getServerMinSecurityLevel(server)'), '/Temp/servers-security.txt', serverNames);
+    dictServerMaxMoney = await getNsDataThroughFile(ns, serversDictCommand('ns.getServerMaxMoney(server)'), '/Temp/servers-max-money.txt', serverNames);
     // Get the information about the relative profitability of each server
     const pid = await exec(ns, getFilePath('analyze-hack.js'), 'home', 1, '--all', '--silent');
     await waitForProcessToComplete_Custom(ns, getFnIsAliveViaNsPs(ns), pid);
@@ -1609,10 +1619,10 @@ function removeServerByName(ns, deletedHostName) {
     const removeByName = (hostname, list, listname) => {
         const toRemove = list.findIndex(s => s.name === hostname);
         if (toRemove === -1)
-            log(ns, `ERROR: Failed to find server by name ${hostname}.`, true, 'error');
+            log(ns, `ERROR: Failed to find server by name "${hostname}".`, true, 'error');
         else {
             list.splice(toRemove, 1);
-            log(ns, `${hostname} was found at index ${toRemove} of list ${listname} and removed leaving ${list.length} items.`);
+            log(ns, `"${hostname}" was found at index ${toRemove} of list ${listname} and removed leaving ${list.length} items.`);
         }
     }
     removeByName(deletedHostName, serverListByFreeRam, 'serverListByFreeRam');
