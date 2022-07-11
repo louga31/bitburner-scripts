@@ -19,30 +19,8 @@ export async function main(ns) {
     const options = getConfiguration(ns, argsSchema);
     if (!options || await instanceCount(ns) > 1) return; // Prevent multiple instances of this script from being started, even with different args.
     const doc = eval('document');
-
     const hook0 = doc.getElementById('overview-extra-hook-0');
     const hook1 = doc.getElementById('overview-extra-hook-1');
-    const customElements = hook1.parentElement.parentElement;
-    const topStatsElement = customElements.cloneNode(true);
-    // Remove any nested elements
-    topStatsElement.querySelectorAll("p > p").forEach(el => el.parentElement.removeChild(el));
-    // Change ids since duplicate id's are invalid
-    topStatsElement.querySelectorAll("p").forEach((el, i) => el.id = "stats-top-display-" + i);
-    // Remove separators
-    topStatsElement.querySelectorAll("th").forEach((el, i) => el.className = el.className.replace("jss14", "jss13"));
-    if (doc.getElementById('stock-display-1') === null) { // If stockmaster have created a hud, display after it
-        customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[2]);
-    } else {
-        customElements.parentElement.insertBefore(topStatsElement, customElements.parentElement.childNodes[3]);
-    }
-    const topStats0 = doc.getElementById('stats-top-display-0');
-    const topStats1 = doc.getElementById('stats-top-display-1');
-
-    ns.atExit(() => {
-        hook1.innerHTML = hook0.innerHTML = "";
-        topStatsElement.parentElement.removeChild(topStatsElement);
-    });
-
     const dictSourceFiles = await getActiveSourceFiles(ns, false); // Find out what source files the user has unlocked
     let playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/getPlayer.txt');
     const bitNode = playerInfo.bitNodeN;
@@ -65,7 +43,6 @@ export async function main(ns) {
     // Main stats update loop
     while (true) {
         try {
-            playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/getPlayer.txt');
             // Show what bitNode we're currently playing in
             addHud("BitNode", `${bitNode}.${1 + (dictSourceFiles[bitNode] || 0)}`,
                 `Detected as being one more than your current owned SF level (${dictSourceFiles[bitNode] || 0}) in the current bitnode (${bitNode}).`);
@@ -83,14 +60,10 @@ export async function main(ns) {
                 }
             }
 
-            var stkPortfolio = 0;
-            
             // Show Stocks (only if stockmaster.js isn't already doing the same)
             if (!options['hide-stocks'] && !doc.getElementById("stock-display-1")) {
                 const stkPortfolio = await getStocksValue(ns);
                 if (stkPortfolio > 0) addHud("Stock", formatMoney(stkPortfolio)); // Also, don't bother showing a section for stock if we aren't holding anything
-                // Show the total money we have
-                addHud("Total", formatMoney(playerInfo.money + stkPortfolio), "Total money you have", true);
             }
 
             // Show total instantaneous script income and experience per second (values provided directly by the game)
@@ -132,6 +105,7 @@ export async function main(ns) {
 
             // Show number of kills if explicitly enabled
             if (options['show-peoplekilled']) {
+                playerInfo = await getNsDataThroughFile(ns, 'ns.getPlayer()', '/Temp/getPlayer.txt');
                 const numPeopleKilled = playerInfo.numPeopleKilled;
                 addHud("Kills", formatSixSigFigs(numPeopleKilled), "Count of successful Homicides. Note: The most kills you need is 30 for 'Speakers for the Dead'");
             }
@@ -183,17 +157,11 @@ export async function main(ns) {
 
             // Clear the previous loop's custom HUDs
             hook1.innerHTML = hook0.innerHTML = "";
-            topStats0.innerHTML = topStats1.innerHTML = "";
             // Create new HUD elements with info collected above.
             for (const hudRow of hudData) {
-                const [header, formattedValue, toolTip, displayOnTop] = hudRow;
-                if (displayOnTop) {
-                    topStats0.appendChild(newline(header.padEnd(9, " "), toolTip));
-                    topStats1.appendChild(newline(formattedValue, toolTip));
-                } else {
-                    hook0.appendChild(newline(header.padEnd(9, " "), toolTip));
-                    hook1.appendChild(newline(formattedValue, toolTip));
-                }
+                const [header, formattedValue, toolTip] = hudRow;
+                hook0.appendChild(newline(header.padEnd(9, " "), toolTip));
+                hook1.appendChild(newline(formattedValue, toolTip));
             }
             hudData.length = 0; // Clear the hud data for the next iteration
 

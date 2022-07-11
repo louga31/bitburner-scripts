@@ -395,7 +395,7 @@ async function updateForecast(ns, allStocks, has4s) {
         }
         const signalStrength = 1 + (stk.bullish() ? (stk.nearTermForecast > stk.prob ? 1 : 0) + (stk.prob > 0.8 ? 1 : 0) : (stk.nearTermForecast < stk.prob ? 1 : 0) + (stk.prob < 0.2 ? 1 : 0));
         if (prepSummary) { // Example: AERO  ++   Prob: 54% (t51: 54%, t10: 67%) tLast⇄:190 Vol:0.640% ER: 2.778BP Spread:1.784% ttProfit: 65 Pos: 14.7M long  (held 189 ticks)
-            stk.debugLog = `${stk.sym.padEnd(5, ' ')} ${(stk.bullish() ? '+' : '-').repeat(signalStrength).padEnd(3)} ` +
+            stk.debugLog = `${stk.sym.padEnd(5, ' ')} ${(stk.bullish() ? '+' : '-').repeat(signalStrength).padEnd(3)} ` +
                 `Prob:${(stk.prob * 100).toFixed(0).padStart(3)}% (t${probWindowLength.toFixed(0).padStart(2)}:${(stk.longTermForecast * 100).toFixed(0).padStart(3)}%, ` +
                 `t${Math.min(stk.priceHistory.length, nearTermForecastWindowLength).toFixed(0).padStart(2)}:${(stk.nearTermForecast * 100).toFixed(0).padStart(3)}%) ` +
                 `tLast⇄:${(stk.lastInversion + 1).toFixed(0).padStart(3)} Vol:${(stk.vol * 100).toFixed(2)}% ER:${formatBP(stk.expectedReturn()).padStart(8)} ` +
@@ -612,8 +612,6 @@ function initializeHud() {
     stockValueTracker.querySelectorAll("p > p").forEach(el => el.parentElement.removeChild(el));
     // Change ids since duplicate id's are invalid
     stockValueTracker.querySelectorAll("p").forEach((el, i) => el.id = "stock-display-" + i);
-    // Remove separators
-    stockValueTracker.querySelectorAll("th").forEach((el, i) => el.className = el.className.replace("jss14", "jss13"));
     // Get out output element
     htmlDisplay = stockValueTracker.querySelector("#stock-display-1");
     // Display label and default value
